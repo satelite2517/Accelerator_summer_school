@@ -1,5 +1,6 @@
 #include "util.h"
 
+#include <cuda_runtime.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -7,6 +8,17 @@
 #include <cmath>
 #include <sys/time.h>
 #include <omp.h>
+
+#define CHECK_CUDA(call)                                                 \
+  do {                                                                   \
+    cudaError_t status_ = call;                                          \
+    if (status_ != cudaSuccess) {                                        \
+      fprintf(stderr, "CUDA error (%s:%d): %s:%s\n", __FILE__, __LINE__, \
+              cudaGetErrorName(status_), cudaGetErrorString(status_));   \
+      exit(EXIT_FAILURE);                                                \
+    }                                                                    \
+  } while (0)
+
 
 double get_time() {
     struct timeval tv;
@@ -57,6 +69,8 @@ void print_vec(float *m, int N) {
 
 float* alloc_vec(int N) {
   float *m = (float *) aligned_alloc(32, sizeof(float) * N);
+  //float *m;
+  //CHECK_CUDA(cudaMallocHost(&m, sizeof(float) * N));
   return m;
 }
 

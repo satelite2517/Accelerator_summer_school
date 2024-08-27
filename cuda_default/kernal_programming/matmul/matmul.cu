@@ -74,10 +74,6 @@ void matmul_cleanup(float *_A, float *_B, float *_C, int M, int N, int K) {
   CHECK_CUDA(cudaFree(B_gpu));
   CHECK_CUDA(cudaFree(C_gpu));
 
-  free(_A)
-  free(_B)
-  free(_C)
-
   // DO NOT REMOVE; NEEDED FOR TIME MEASURE
   CHECK_CUDA(cudaDeviceSynchronize());
 }
