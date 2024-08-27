@@ -26,6 +26,7 @@ void naive_cpu_matmul(float *_A, float *_B, float *_C, int M, int N, int K) {
 }
 
 __global__ void matmal(const float *A, const float *B, float *C, const int M, const int N, const int K) {
+  // if you change thx and thy then this will be faster
   int thx = blockIdx.x * blockDim.x + threadIdx.x;
   int thy = blockIdx.y * blockDim.y + threadIdx.y;
   if (thx>=M || thy>=N) return;
@@ -72,6 +73,10 @@ void matmul_cleanup(float *_A, float *_B, float *_C, int M, int N, int K) {
   CHECK_CUDA(cudaFree(A_gpu));
   CHECK_CUDA(cudaFree(B_gpu));
   CHECK_CUDA(cudaFree(C_gpu));
+
+  free(_A)
+  free(_B)
+  free(_C)
 
   // DO NOT REMOVE; NEEDED FOR TIME MEASURE
   CHECK_CUDA(cudaDeviceSynchronize());
