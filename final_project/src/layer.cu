@@ -169,7 +169,7 @@ void data_cleanup(Tensor *z) {
 
 
 //This part is for the cuda fuctions to run kernel
-void Linear(Tensor *in, Tensor *w, Tensor *b, Tensor *out){
+void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out){
   size_t M = out->shape[0];
   size_t N = out->shape[1];
   size_t K = w->shape[1];
