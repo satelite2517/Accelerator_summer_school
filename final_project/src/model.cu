@@ -3,6 +3,17 @@
 #include "layer.h"
 #include "model.h"
 
+
+#define CHECK_CUDA(call)                                                 \
+  do {                                                                   \
+    cudaError_t status_ = call;                                          \
+    if (status_ != cudaSuccess) {                                        \
+      fprintf(stderr, "CUDA error (%s:%d): %s:%s\n", __FILE__, __LINE__, \
+              cudaGetErrorName(status_), cudaGetErrorString(status_));   \
+      exit(EXIT_FAILURE);                                                \
+    }                                                                    \
+  } while (0)
+
 /* [Model Parameters]
  * _w: Weight parameter
  * _b: Bias parameter
@@ -147,25 +158,24 @@ Activation *convtrans5_a, *batchnorm5_a;
 Activation *convtrans6_a, *batchnorm6_a;
 Activation *conv_a;
 
-
-#define IMAGE_CHUNCK 2
+#define IMAGE_CHUNK 32
 void alloc_activations() {
-  	linear1_a = new Activation({IMAGE_CHUNCK, 16384});
-	linear2_a = new Activation({IMAGE_CHUNCK, 4096});
-	reshape_a = new Activation({IMAGE_CHUNCK, 1024, 2, 2});
-	convtrans1_a = new Activation({IMAGE_CHUNCK, 512, 4, 4});
-	batchnorm1_a = new Activation({IMAGE_CHUNCK, 512, 4, 4});
-	convtrans2_a = new Activation({IMAGE_CHUNCK, 256, 8, 8});
-	batchnorm2_a = new Activation({IMAGE_CHUNCK, 256, 8, 8});
-	convtrans3_a = new Activation({IMAGE_CHUNCK, 128, 16, 16});
-	batchnorm3_a = new Activation({IMAGE_CHUNCK, 128, 16, 16});
-	convtrans4_a = new Activation({IMAGE_CHUNCK, 64, 32, 32});
-	batchnorm4_a = new Activation({IMAGE_CHUNCK, 64, 32, 32});
-	convtrans5_a = new Activation({IMAGE_CHUNCK, 32, 64, 64});
-	batchnorm5_a = new Activation({IMAGE_CHUNCK, 32, 64, 64});
-	convtrans6_a = new Activation({IMAGE_CHUNCK, 32, 128, 128});
-	batchnorm6_a = new Activation({IMAGE_CHUNCK, 32, 128, 128});
-	conv_a = new Activation({IMAGE_CHUNCK, 3, 128, 128});
+  	linear1_a = new Activation({IMAGE_CHUNK, 16384});
+	linear2_a = new Activation({IMAGE_CHUNK, 4096});
+	reshape_a = new Activation({IMAGE_CHUNK, 1024, 2, 2});
+	convtrans1_a = new Activation({IMAGE_CHUNK, 512, 4, 4});
+	batchnorm1_a = new Activation({IMAGE_CHUNK, 512, 4, 4});
+	convtrans2_a = new Activation({IMAGE_CHUNK, 256, 8, 8});
+	batchnorm2_a = new Activation({IMAGE_CHUNK, 256, 8, 8});
+	convtrans3_a = new Activation({IMAGE_CHUNK, 128, 16, 16});
+	batchnorm3_a = new Activation({IMAGE_CHUNK, 128, 16, 16});
+	convtrans4_a = new Activation({IMAGE_CHUNK, 64, 32, 32});
+	batchnorm4_a = new Activation({IMAGE_CHUNK, 64, 32, 32});
+	convtrans5_a = new Activation({IMAGE_CHUNK, 32, 64, 64});
+	batchnorm5_a = new Activation({IMAGE_CHUNK, 32, 64, 64});
+	convtrans6_a = new Activation({IMAGE_CHUNK, 32, 128, 128});
+	batchnorm6_a = new Activation({IMAGE_CHUNK, 32, 128, 128});
+	conv_a = new Activation({IMAGE_CHUNK, 3, 128, 128});
 }
 
 void free_activations() {
@@ -190,7 +200,14 @@ void free_activations() {
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
 
-	size_t image_chunk = IMAGE_CHUNCK;
+	size_t image_chunk = IMAGE_CHUNK;  // IMAGE_CHUNK variable
+	cudaStream_t kernel_stream, data_stream;
+	cudaStreamCreate(&kernel_stream);
+	cudaStreamCreate(&data_stream);
+
+	cudaEvent_t kernel_end, memcpy_end;
+	cudaEventCreate(&kernel_end);
+	cudaEventCreate(&memcpy_end);
 
 	/* Generate images for each chunk of latent vectors in the input */
 	for (size_t n = 0; n < n_img; n += image_chunk) {
@@ -201,43 +218,39 @@ void generate_images(float *input, float *output, size_t n_img) {
 		/* Initialize input latent vectors z [current_chunk_size, LATENT_DIM] */
 		Tensor *z = new Tensor({current_chunk_size, LATENT_DIM});
 		memcpy(z->buf, input + n * LATENT_DIM, current_chunk_size * LATENT_DIM * sizeof(float));
+
 		data_upload(z);
 
-		/* in [current_chunk_size, LATENT_DIM] -> out [current_chunk_size, 16384] */
-		/* in [current_chunk_size, 16384] -> out [current_chunk_size, 4096] */
-		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a);
-		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a);
-
-		/* in [current_chunk_size, 4096] -> out [current_chunk_size, 1024, 2, 2] */
-		Reshape_cuda(linear2_a, reshape_a);
-
-		/* in [current_chunk_size, 1024, 2, 2] -> out [current_chunk_size, 512, 4, 4] */
-		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a);
-
-		/* in [current_chunk_size, 512, 4, 4] -> out [current_chunk_size, 256, 8, 8] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a,batchnorm2_w, batchnorm2_b, batchnorm2_a);
-
-		/* in [current_chunk_size, 256, 8, 8] -> out [current_chunk_size, 128, 16, 16] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a,batchnorm3_w, batchnorm3_b, batchnorm3_a);
-
-		/* in [current_chunk_size, 128, 16, 16] -> out [current_chunk_size, 64, 32, 32] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a,batchnorm4_w, batchnorm4_b, batchnorm4_a);
-
-		/* in [current_chunk_size, 64, 32, 32] -> out [current_chunk_size, 32, 64, 64] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a,batchnorm5_w, batchnorm5_b, batchnorm5_a);
-
-		/* in [current_chunk_size, 32, 64, 64] -> out [current_chunk_size, 32, 128, 128] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a,batchnorm6_w, batchnorm6_b, batchnorm6_a);
+		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a, kernel_stream);
+		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a, kernel_stream);
+		Reshape_cuda(linear2_a, reshape_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a, batchnorm2_w, batchnorm2_b, batchnorm2_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a, batchnorm3_w, batchnorm3_b, batchnorm3_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a, batchnorm4_w, batchnorm4_b, batchnorm4_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a, batchnorm5_w, batchnorm5_b, batchnorm5_a, kernel_stream);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a, batchnorm6_w, batchnorm6_b, batchnorm6_a, kernel_stream);
 		
-		/* in [current_chunk_size, 32, 128, 128] -> out [current_chunk_size, 3, 128, 128] */
-		Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a);
+		if (n != 0) cudaStreamWaitEvent(kernel_stream, memcpy_end, 0);
 
-		/* Copy computation result to the output */
-		memcpy(output + n * 3 * 128 * 128, conv_a->buf, current_chunk_size * 3 * 128 * 128 * sizeof(float));
+		Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a, kernel_stream);
+		cudaEventRecord(kernel_end, kernel_stream);
+
+		cudaStreamWaitEvent(data_stream, kernel_end, 0);
+		CHECK_CUDA(cudaMemcpyAsync(output + n * 3 * 128 * 128, conv_a->gpu_buf, current_chunk_size * 3 * 128 * 128 * sizeof(float), cudaMemcpyDeviceToHost, data_stream));
+		cudaEventRecord(memcpy_end, data_stream);
 
 		/* Free the input latent vector z */
 		delete z;
-		
 	}
 
+	// Wait for all operations to complete
+	cudaStreamSynchronize(data_stream);
+	cudaStreamSynchronize(kernel_stream);
+
+	// Clean up streams and events
+	cudaEventDestroy(kernel_end);
+	cudaEventDestroy(memcpy_end);
+	cudaStreamDestroy(data_stream);
+	cudaStreamDestroy(kernel_stream);
 }

@@ -10,6 +10,9 @@
     }                                                                    \
   } while (0)
 
+cudaStream_t data_stream, kernel_stream;
+cudaEvent_t memcpy_end;
+
 
 //This part is for kernel functions
 
@@ -181,7 +184,7 @@ void data_cleanup(Tensor *z) {
 
 
 //This part is for the cuda fuctions to run kernel
-void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out){
+void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out,cudaStream_t stream){
   size_t M = out->shape[0];
   size_t N = out->shape[1];
   size_t K = w->shape[1];
@@ -192,20 +195,20 @@ void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out){
   // size_t shared_mem_size = (TILE_SIZE * K + TILE_SIZE) * sizeof(float);
   
   // Linear_kernel<<<gridDim, blockDim, shared_mem_size>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
-  Linear_shared_kernel<<<gridDim, blockDim, shared_mem_size>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
+  Linear_shared_kernel<<<gridDim, blockDim, shared_mem_size, stream>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
 }
 
-void Reshape_cuda(Tensor *in, Tensor *out){
+void Reshape_cuda(Tensor *in, Tensor *out,cudaStream_t stream){
   size_t N = in->shape[0];
   size_t D = in->shape[1];
   size_t C = out->shape[1];
   size_t H = out->shape[2];
   size_t W = out->shape[3];
 
-  Reshape_kernel<<<((N*C*H*W+1024-1)/1024), 1024>>>(in->gpu_buf, out->gpu_buf, N, D, C, H, W);
+  Reshape_kernel<<<((N*C*H*W+1024-1)/1024), 1024,0,stream>>>(in->gpu_buf, out->gpu_buf, N, D, C, H, W);
 }
 
-void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Conv_bias, Tensor *Conv_ans, Tensor *Batch_weight, Tensor *Batch_bias, Tensor *out){
+void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Conv_bias, Tensor *Conv_ans, Tensor *Batch_weight, Tensor *Batch_bias, Tensor *out,cudaStream_t stream){
   size_t N = in->shape[0];
   size_t H = in->shape[2];
   size_t W = in->shape[3];
@@ -223,13 +226,13 @@ void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Co
   const size_t pad = 1;
   const size_t dilation = 1;
 
-  ConvTranspose2d_kernel<<<(N*Conv_K*OH*OW+1024-1)/1024, 1024>>>(in->gpu_buf, Conv_weight->gpu_buf, Conv_bias->gpu_buf, Conv_ans->gpu_buf, N, Conv_C, H, W, Conv_K, Conv_R, Conv_S, OH, OW, stride, pad, dilation);
-  BatchNorm2d_kernel<<<(N*Batch_C*OH*OW+1024-1)/1024, 1024>>>(Conv_ans->gpu_buf, Batch_weight->gpu_buf, Batch_bias->gpu_buf, out->gpu_buf,  N, Batch_C, OH, OW);
-  LeakyReLU_kernel<<<(N*Batch_C*OH*OW+1024-1)/1024, 1024>>>(out->gpu_buf,N*Batch_C*OH*OW, 0.01);
+  ConvTranspose2d_kernel<<<(N*Conv_K*OH*OW+1024-1)/1024, 1024,0,stream>>>(in->gpu_buf, Conv_weight->gpu_buf, Conv_bias->gpu_buf, Conv_ans->gpu_buf, N, Conv_C, H, W, Conv_K, Conv_R, Conv_S, OH, OW, stride, pad, dilation);
+  BatchNorm2d_kernel<<<(N*Batch_C*OH*OW+1024-1)/1024, 1024,0,stream>>>(Conv_ans->gpu_buf, Batch_weight->gpu_buf, Batch_bias->gpu_buf, out->gpu_buf,  N, Batch_C, OH, OW);
+  LeakyReLU_kernel<<<(N*Batch_C*OH*OW+1024-1)/1024, 1024,0,stream>>>(out->gpu_buf,N*Batch_C*OH*OW, 0.01);
 
 }
 
-void Conv2d_Tanh_fusion_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out){
+void Conv2d_Tanh_fusion_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out,cudaStream_t stream){
   size_t N = in->shape[0];
   size_t C = in->shape[1];
   size_t H = in->shape[2];
@@ -244,8 +247,6 @@ void Conv2d_Tanh_fusion_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *o
   const size_t pad = 1;
   const size_t dilation = 1;
 
-  Conv2d_Tanh_fusion_kernel<<<(N*K*OH*OW+1024-1)/1024, 1024>>>(in->gpu_buf, weight->gpu_buf, bias->gpu_buf, out->gpu_buf, N, K, C, R, S, H, W, OH, OW, stride, pad, dilation);
-
-  CHECK_CUDA(cudaMemcpy(out->buf, out->gpu_buf, N*K*OH*OW*sizeof(float), cudaMemcpyDeviceToHost));
+  Conv2d_Tanh_fusion_kernel<<<(N*K*OH*OW+1024-1)/1024, 1024, 0,stream>>>(in->gpu_buf, weight->gpu_buf, bias->gpu_buf, out->gpu_buf, N, K, C, R, S, H, W, OH, OW, stride, pad, dilation);
 
 }
