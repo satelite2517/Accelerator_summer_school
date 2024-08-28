@@ -276,9 +276,8 @@ void generate_images(float *input, float *output, size_t n_img) {
 
 		/* in [1, LATENT_DIM] -> out [1, 16384] */
 		/* in [1, 16384] -> out [1, 4096] */
-		Linear(z, mlp1_w, mlp1_b, linear1_a);
-		Linear(linear1_a, mlp2_w, mlp2_b, linear2_a);
-
+		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a);
+		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a);
 
 		/* in [1, 4096] -> out [1, 1024, 2, 2] */
 		Reshape_cuda(linear2_a, reshape_a);
