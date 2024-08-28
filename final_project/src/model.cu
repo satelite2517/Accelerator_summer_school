@@ -148,7 +148,7 @@ Activation *convtrans6_a, *batchnorm6_a;
 Activation *conv_a;
 
 void alloc_activations() {
-  linear1_a = new Activation({1, 16384});
+  	linear1_a = new Activation({1, 16384});
 	linear2_a = new Activation({1, 4096});
 	reshape_a = new Activation({1, 1024, 2, 2});
 	convtrans1_a = new Activation({1, 512, 4, 4});
