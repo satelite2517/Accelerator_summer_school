@@ -187,42 +187,82 @@ void free_activations() {
 	delete conv_a;
 }
 
-void upload_all_param(){
-	data_stream(mlp1_b);
-	data_stream(mlp1_w);
-	data_stream(mlp2_b);
-	data_stream(mlp2_w);
-	data_stream(convtrans1_w);
-	data_stream(convtrans1_b);
-	data_stream(batchnorm1_w);
-	data_stream(batchnorm1_b);
-	data_stream(convtrans2_w);
-	data_stream(convtrans2_b);
-	data_stream(batchnorm2_w);
-	data_stream(batchnorm2_b);
-	data_stream(convtrans3_w);
-	data_stream(convtrans3_b);
-	data_stream(batchnorm3_w);
-	data_stream(batchnorm3_b);
-	data_stream(convtrans4_w);
-	data_stream(convtrans4_b);
-	data_stream(batchnorm4_w);
-	data_stream(batchnorm4_b);
-	data_stream(convtrans5_w);
-	data_stream(convtrans5_b);
-	data_stream(batchnorm5_w);
-	data_stream(batchnorm5_b);
-	data_stream(convtrans6_w);
-	data_stream(convtrans6_b);
-	data_stream(batchnorm6_w);
-	data_stream(batchnorm6_b);
-	data_stream(conv_w);
-	data_stream(conv_b);
+void upload_all_param_to_cuda(){
+	data_upload(mlp1_w);
+	data_upload(mlp1_b);
+	data_upload(mlp2_w);
+	data_upload(mlp2_b);
+	data_upload(convtrans1_w);
+	data_upload(convtrans1_b);
+	data_upload(batchnorm1_w);
+	data_upload(batchnorm1_b);	
+	data_upload(convtrans2_w);
+	data_upload(convtrans2_b);
+	data_upload(batchnorm2_w);
+	data_upload(batchnorm2_b);
+	data_upload(convtrans3_w);
+	data_upload(convtrans3_b);
+	data_upload(batchnorm3_w);
+	data_upload(batchnorm3_b);
+	data_upload(convtrans4_w);
+	data_upload(convtrans4_b);
+	data_upload(batchnorm4_w);
+	data_upload(batchnorm4_b);
+	data_upload(convtrans5_w);
+	data_upload(convtrans5_b);
+	data_upload(batchnorm5_w);
+	data_upload(batchnorm5_b);
+	data_upload(convtrans6_w);
+	data_upload(convtrans6_b);
+	data_upload(batchnorm6_w);
+	data_upload(batchnorm6_b);
+	data_upload(conv_w);
+	data_upload(conv_b);
 }
+
+void upload_all_activation_to_cuda(){
+	data_upload(linear1_a);
+	data_upload(linear2_a);
+	data_upload(reshape_a);
+	data_upload(convtrans1_a);
+	data_upload(batchnorm1_a);
+	data_upload(convtrans2_a);
+	data_upload(batchnorm2_a);
+	data_upload(convtrans3_a);
+	data_upload(batchnorm3_a);
+	data_upload(convtrans4_a);
+	data_upload(batchnorm4_a);
+	data_upload(convtrans5_a);
+	data_upload(batchnorm5_a);
+	data_upload(convtrans6_a);
+	data_upload(batchnorm6_a);
+	data_upload(conv_a);
+}
+
+void cleanup_all_activation_to_cuda(){
+	data_cleanup(linear1_a);
+	data_cleanup(linear2_a);
+	data_cleanup(reshape_a);
+	data_cleanup(convtrans1_a);
+	data_cleanup(batchnorm1_a);
+	data_cleanup(convtrans2_a);
+	data_cleanup(batchnorm2_a);
+	data_cleanup(convtrans3_a);
+	data_cleanup(batchnorm3_a);
+	data_cleanup(convtrans4_a);
+	data_cleanup(batchnorm4_a);	
+	data_cleanup(convtrans5_a);
+	data_cleanup(batchnorm5_a);
+	data_cleanup(convtrans6_a);
+	data_cleanup(batchnorm6_a);
+	data_cleanup(conv_a);
+
+}
+
 
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
-	upload_all_param();
+	upload_all_param_to_cuda();
   
 	/* Generate a image for each latent vector in the input */
 	for (size_t n = 0; n < n_img; n++) {
@@ -230,6 +270,9 @@ void generate_images(float *input, float *output, size_t n_img) {
 		/* Initialize a input latent vector z [1, LATENT_DIM] */
 		Tensor *z = new Tensor({1, LATENT_DIM});
 		memcpy(z->buf, input + n * LATENT_DIM, LATENT_DIM * sizeof(float));
+		data_upload(z);
+
+		upload_all_activation_to_cuda();
 
 		/* in [1, LATENT_DIM] -> out [1, 16384] */
 		/* in [1, 16384] -> out [1, 4096] */
@@ -241,27 +284,33 @@ void generate_images(float *input, float *output, size_t n_img) {
 		Reshape_cuda(linear2_a, reshape_a);
 
 		/* in [1, 1024, 2, 2] -> out [1, 512, 4, 4] */
-		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, batchnorm1_w, batchnorm1_b, batchnorm1_a);
+		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a);
 
 		/* in [1, 512, 4, 4] -> out [1, 256, 8, 8] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, batchnorm2_w, batchnorm2_b, batchnorm2_a);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a,batchnorm2_w, batchnorm2_b, batchnorm2_a);
 
 		/* in [1, 256, 8, 8] -> out [1, 128, 16, 16] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, batchnorm3_w, batchnorm3_b, batchnorm3_a);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a,batchnorm3_w, batchnorm3_b, batchnorm3_a);
 
 		/* in [1, 128, 16, 16] -> out [1, 64, 32, 32] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, batchnorm4_w, batchnorm4_b, batchnorm4_a);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a,batchnorm4_w, batchnorm4_b, batchnorm4_a);
 
 		/* in [1, 64, 32, 32] -> out [1, 32, 64, 64] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, batchnorm5_w, batchnorm5_b, batchnorm5_a);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a,batchnorm5_w, batchnorm5_b, batchnorm5_a);
 
 		/* in [1, 32, 64, 64] -> out [1, 32, 128, 128] */
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, batchnorm6_w, batchnorm6_b, batchnorm6_a);
+		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a,batchnorm6_w, batchnorm6_b, batchnorm6_a);
 		
 		/* in [1, 32, 128, 128] -> out [1, 3, 128, 128] */
 		Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a);
 
 		/* Copy computation result to the output */
 		memcpy(output + n * 3 * 128 * 128, conv_a->buf, 3 * 128 * 128 * sizeof(float));
+
+		/* Free the input latent vector z */	
+		delete z;
+		//cleanup_all_activation_to_cuda();
+		
 	}
+
 }
