@@ -148,7 +148,7 @@ Activation *convtrans6_a, *batchnorm6_a;
 Activation *conv_a;
 
 
-#define IMAGE_CHUNCK 1
+#define IMAGE_CHUNCK 2
 void alloc_activations() {
   	linear1_a = new Activation({IMAGE_CHUNCK, 16384});
 	linear2_a = new Activation({IMAGE_CHUNCK, 4096});
