@@ -148,24 +148,24 @@ Activation *convtrans6_a, *batchnorm6_a;
 Activation *conv_a;
 
 
-
+#define IMAGE_CHUNCK 1
 void alloc_activations() {
-  	linear1_a = new Activation({1, 16384});
-	linear2_a = new Activation({1, 4096});
-	reshape_a = new Activation({1, 1024, 2, 2});
-	convtrans1_a = new Activation({1, 512, 4, 4});
-	batchnorm1_a = new Activation({1, 512, 4, 4});
-	convtrans2_a = new Activation({1, 256, 8, 8});
-	batchnorm2_a = new Activation({1, 256, 8, 8});
-	convtrans3_a = new Activation({1, 128, 16, 16});
-	batchnorm3_a = new Activation({1, 128, 16, 16});
-	convtrans4_a = new Activation({1, 64, 32, 32});
-	batchnorm4_a = new Activation({1, 64, 32, 32});
-	convtrans5_a = new Activation({1, 32, 64, 64});
-	batchnorm5_a = new Activation({1, 32, 64, 64});
-	convtrans6_a = new Activation({1, 32, 128, 128});
-	batchnorm6_a = new Activation({1, 32, 128, 128});
-	conv_a = new Activation({1, 3, 128, 128});
+  	linear1_a = new Activation({IMAGE_CHUNCK, 16384});
+	linear2_a = new Activation({IMAGE_CHUNCK, 4096});
+	reshape_a = new Activation({IMAGE_CHUNCK, 1024, 2, 2});
+	convtrans1_a = new Activation({IMAGE_CHUNCK, 512, 4, 4});
+	batchnorm1_a = new Activation({IMAGE_CHUNCK, 512, 4, 4});
+	convtrans2_a = new Activation({IMAGE_CHUNCK, 256, 8, 8});
+	batchnorm2_a = new Activation({IMAGE_CHUNCK, 256, 8, 8});
+	convtrans3_a = new Activation({IMAGE_CHUNCK, 128, 16, 16});
+	batchnorm3_a = new Activation({IMAGE_CHUNCK, 128, 16, 16});
+	convtrans4_a = new Activation({IMAGE_CHUNCK, 64, 32, 32});
+	batchnorm4_a = new Activation({IMAGE_CHUNCK, 64, 32, 32});
+	convtrans5_a = new Activation({IMAGE_CHUNCK, 32, 64, 64});
+	batchnorm5_a = new Activation({IMAGE_CHUNCK, 32, 64, 64});
+	convtrans6_a = new Activation({IMAGE_CHUNCK, 32, 128, 128});
+	batchnorm6_a = new Activation({IMAGE_CHUNCK, 32, 128, 128});
+	conv_a = new Activation({IMAGE_CHUNCK, 3, 128, 128});
 }
 
 void free_activations() {
@@ -190,7 +190,7 @@ void free_activations() {
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
 
-    size_t image_chunk = 1;
+	size_t image_chunk = IMAGE_CHUNCK;
 
 	/* Generate images for each chunk of latent vectors in the input */
 	for (size_t n = 0; n < n_img; n += image_chunk) {

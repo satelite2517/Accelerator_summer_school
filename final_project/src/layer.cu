@@ -13,18 +13,36 @@
 
 //This part is for kernel functions
 
-__global__ void Linear_kernel(const float *in_, const float *w_, const float *b_, float *out_, const size_t M, const size_t N, const size_t K){
-  const int tidx = blockDim.x * blockIdx.x + threadIdx.x;
-  if (tidx >= M * N) return;
-  const int i = tidx / N;
-  const int j = tidx % N;
+#define TILE_SIZE 16
 
-  if (i >= M || j >= N) return;
-  float sum = b_[j];
-  for (size_t k = 0; k<K; k++){
-    sum += in_[i * K +k] * w_[j * K + k];
+__global__ void Linear_shared_kernel(const float *A, const float *B, const float *b_, float *out_, const size_t M, const size_t N, const size_t K){
+  // Shared memory
+  int j = blockIdx.x * blockDim.x + threadIdx.x;
+  int i = blockIdx.y * blockDim.y + threadIdx.y;
+  int gj = blockIdx.x, gi = blockIdx.y;
+  int lj = threadIdx.x, li = threadIdx.y;
+  if (gi * TILE_SIZE >= M || gj * TILE_SIZE >= N) return;
+  
+  __shared__ float Alocal[TILE_SIZE][TILE_SIZE];
+  __shared__ float Blocal[TILE_SIZE][TILE_SIZE];
+  float c = 0.f;
+
+  int Ai = gi * TILE_SIZE + li, Bj = gj * TILE_SIZE + lj;
+  #pragma unroll 8
+  for (int bk = 0; bk < K; bk += TILE_SIZE) {
+    int Aj = bk + lj, Bi = bk + li;
+    Alocal[li][lj] = (Ai < M && Aj < K) ? A[Ai * K + Aj] : 0.f;
+    Blocal[lj][li] = (Bi < K && Bj < N) ? B[Bj * K + Bi] : 0.0f;
+    __syncthreads();
+
+    #pragma unroll 8
+    for (int lk = 0; lk < TILE_SIZE; ++lk) {
+      c += Alocal[li][lk] * Blocal[lj][lk];
+    }
+    __syncthreads();
   }
-  out_[i*M+j] = sum;
+  
+  if ( i < M && j < N ) out_[i * N + j] = c + b_[j];
 }
 
 __global__ void Reshape_kernel(const float *in_, float *out_, const size_t N, const size_t D, const size_t C, const size_t H, const size_t W){
@@ -162,14 +180,19 @@ void data_cleanup(Tensor *z) {
 }
 
 
-
 //This part is for the cuda fuctions to run kernel
 void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out){
   size_t M = out->shape[0];
   size_t N = out->shape[1];
   size_t K = w->shape[1];
 
-  Linear_kernel<<<((M*N+1024-1)/1024), 1024>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
+  dim3 blockDim(TILE_SIZE, TILE_SIZE);
+  dim3 gridDim((N + TILE_SIZE - 1) / TILE_SIZE, (M + TILE_SIZE - 1) / TILE_SIZE);
+  size_t shared_mem_size = 0;
+  // size_t shared_mem_size = (TILE_SIZE * K + TILE_SIZE) * sizeof(float);
+  
+  // Linear_kernel<<<gridDim, blockDim, shared_mem_size>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
+  Linear_shared_kernel<<<gridDim, blockDim, shared_mem_size>>>(in->gpu_buf, w->gpu_buf, b->gpu_buf,out->gpu_buf, M, N, K);
 }
 
 void Reshape_cuda(Tensor *in, Tensor *out){
@@ -184,15 +207,17 @@ void Reshape_cuda(Tensor *in, Tensor *out){
 
 void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Conv_bias, Tensor *Conv_ans, Tensor *Batch_weight, Tensor *Batch_bias, Tensor *out){
   size_t N = in->shape[0];
-  size_t Conv_C = in->shape[1];
   size_t H = in->shape[2];
   size_t W = in->shape[3];
+
+  size_t Conv_C = Conv_weight->shape[0];
   size_t Conv_K = Conv_weight->shape[1];
   size_t Conv_R = Conv_weight->shape[2];
   size_t Conv_S = Conv_weight->shape[3];
+
   size_t Batch_C = Batch_weight->shape[0];
-  size_t OH = out->shape[2];
-  size_t OW = out->shape[3];
+  size_t OH = Conv_ans->shape[2];
+  size_t OW = Conv_ans->shape[3];
  
   const size_t stride = 2;
   const size_t pad = 1;
