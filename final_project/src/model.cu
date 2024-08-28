@@ -197,47 +197,47 @@ void generate_images(float *input, float *output, size_t n_img) {
 
 		/* Start computation */
 		/* in [1, LATENT_DIM] -> out [1, 16384] */
-		Linear(z, mlp1_w, mlp1_b, linear1_a);
+		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a);
 
 		/* in [1, 16384] -> out [1, 4096] */
-		Linear(linear1_a, mlp2_w, mlp2_b, linear2_a);
+		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a);
 
 		/* in [1, 4096] -> out [1, 1024, 2, 2] */
-		Reshape(linear2_a, reshape_a);
+		Reshape_cuda(linear2_a, reshape_a);
 
 		/* in [1, 1024, 2, 2] -> out [1, 512, 4, 4] */
-		ConvTranspose2d(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a);
-		BatchNorm2d(convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a);
-		LeakyReLU(batchnorm1_a);
+		ConvTranspose2d_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a);
+		BatchNorm2d_cuda(convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a);
+		LeakyReLU_cuda(batchnorm1_a);
 
 		/* in [1, 512, 4, 4] -> out [1, 256, 8, 8] */
-		ConvTranspose2d(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a);
-		BatchNorm2d(convtrans2_a, batchnorm2_w, batchnorm2_b, batchnorm2_a);
-		LeakyReLU(batchnorm2_a);
+		ConvTranspose2d_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a);
+		BatchNorm2d_cuda(convtrans2_a, batchnorm2_w, batchnorm2_b, batchnorm2_a);
+		LeakyReLU_cuda(batchnorm2_a);
 
 		/* in [1, 256, 8, 8] -> out [1, 128, 16, 16] */
-		ConvTranspose2d(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a);
-		BatchNorm2d(convtrans3_a, batchnorm3_w, batchnorm3_b, batchnorm3_a);
-		LeakyReLU(batchnorm3_a);
+		ConvTranspose2d_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a);
+		BatchNorm2d_cuda(convtrans3_a, batchnorm3_w, batchnorm3_b, batchnorm3_a);
+		LeakyReLU_cuda(batchnorm3_a);
 
 		/* in [1, 128, 16, 16] -> out [1, 64, 32, 32] */
-		ConvTranspose2d(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a);
-		BatchNorm2d(convtrans4_a, batchnorm4_w, batchnorm4_b, batchnorm4_a);
-		LeakyReLU(batchnorm4_a);
+		ConvTranspose2d_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a);
+		BatchNorm2d_cuda(convtrans4_a, batchnorm4_w, batchnorm4_b, batchnorm4_a);
+		LeakyReLU_cuda(batchnorm4_a);
 
 		/* in [1, 64, 32, 32] -> out [1, 32, 64, 64] */
-		ConvTranspose2d(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a);
-		BatchNorm2d(convtrans5_a, batchnorm5_w, batchnorm5_b, batchnorm5_a);
-		LeakyReLU(batchnorm5_a);
+		ConvTranspose2d_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a);
+		BatchNorm2d_cuda(convtrans5_a, batchnorm5_w, batchnorm5_b, batchnorm5_a);
+		LeakyReLU_cuda(batchnorm5_a);
 
 		/* in [1, 32, 64, 64] -> out [1, 32, 128, 128] */
-		ConvTranspose2d(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a);
-		BatchNorm2d(convtrans6_a, batchnorm6_w, batchnorm6_b, batchnorm6_a);
-		LeakyReLU(batchnorm6_a);
+		ConvTranspose2d_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a);
+		BatchNorm2d_cuda(convtrans6_a, batchnorm6_w, batchnorm6_b, batchnorm6_a);
+		LeakyReLU_cuda(batchnorm6_a);
 		
 		/* in [1, 32, 128, 128] -> out [1, 3, 128, 128] */
-		Conv2d(batchnorm6_a, conv_w, conv_b, conv_a);
-		Tanh(conv_a);
+		Conv2d_cuda(batchnorm6_a, conv_w, conv_b, conv_a);
+		Tanh_cuda(conv_a);
 
 		/* Copy computation result to the output */
 		memcpy(output + n * 3 * 128 * 128, conv_a->buf, 3 * 128 * 128 * sizeof(float));

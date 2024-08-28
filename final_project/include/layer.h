@@ -21,3 +21,9 @@ void BatchNorm2d(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out);
 
 /* Example GPU kernel */
 void LeakyReLU_cuda(Tensor *inout);
+void Linear_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
+void ConvTranspose2d_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out);
+void Conv2d_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
+void BatchNorm2d_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out);
+void Tanh_cuda(Tensor *inout);
+void Reshape_cuda(Tensor *in, Tensor *out);

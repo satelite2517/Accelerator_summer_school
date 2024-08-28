@@ -1,4 +1,4 @@
-/* Last Updated: 24.08.26. 21:30 */
+/* Last Updated: 24.08.27. 23:00 */
 #include <cuda_runtime.h>
 #include <unistd.h>
 
@@ -160,11 +160,6 @@ int main(int argc, char **argv) {
   ////////////////////////////////////////////////////////////////////
 
   double st = 0.0, et = 0.0;
-  for (size_t i = 0; i < 4; i++) {
-    cudaSetDevice(i);
-    cudaDeviceSynchronize();
-  }
-  cudaSetDevice(0);
 
   fprintf(stdout, "Generating images...");
   fflush(stdout);
@@ -173,12 +168,6 @@ int main(int argc, char **argv) {
 
   /* Call the main computation (optimization target) of the program. */
 	generate_images(input, output, num_images);
-  
-  for (size_t i = 0; i < 4; i++) {
-    cudaSetDevice(i);
-    cudaDeviceSynchronize();
-  }
-  cudaSetDevice(0);
 
   et = get_time();
 
