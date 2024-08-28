@@ -38,7 +38,7 @@ Tensor::Tensor(const vector<size_t> &shape_, float *buf_) {
   // Allocate memory directly to z->gpu_buf
   CHECK_CUDA(cudaMalloc(&gpu_buf, N_ * sizeof(float)));
   // Copy data from host to device
-  CHECK_CUDA(cudaMemcpyAsync(gpu_buf, buf, N_* sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(gpu_buf, buf, N_* sizeof(float), cudaMemcpyHostToDevice));
 }
 
 

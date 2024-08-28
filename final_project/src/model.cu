@@ -190,47 +190,52 @@ void free_activations() {
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
 
-	/* Generate a image for each latent vector in the input */
-	for (size_t n = 0; n < n_img; n ++) {
+    size_t image_chunk = 1;
 
-		/* Initialize a input latent vector z [1, LATENT_DIM] */
-		Tensor *z = new Tensor({1, LATENT_DIM});
-		memcpy(z->buf, input + n * LATENT_DIM, LATENT_DIM * sizeof(float));
+	/* Generate images for each chunk of latent vectors in the input */
+	for (size_t n = 0; n < n_img; n += image_chunk) {
+
+		/* Calculate the number of images in the current chunk */
+		size_t current_chunk_size = (n + image_chunk <= n_img) ? image_chunk : (n_img - n);
+
+		/* Initialize input latent vectors z [current_chunk_size, LATENT_DIM] */
+		Tensor *z = new Tensor({current_chunk_size, LATENT_DIM});
+		memcpy(z->buf, input + n * LATENT_DIM, current_chunk_size * LATENT_DIM * sizeof(float));
 		data_upload(z);
 
-		/* in [1, LATENT_DIM] -> out [1, 16384] */
-		/* in [1, 16384] -> out [1, 4096] */
+		/* in [current_chunk_size, LATENT_DIM] -> out [current_chunk_size, 16384] */
+		/* in [current_chunk_size, 16384] -> out [current_chunk_size, 4096] */
 		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a);
 		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a);
 
-		/* in [1, 4096] -> out [1, 1024, 2, 2] */
+		/* in [current_chunk_size, 4096] -> out [current_chunk_size, 1024, 2, 2] */
 		Reshape_cuda(linear2_a, reshape_a);
 
-		/* in [1, 1024, 2, 2] -> out [1, 512, 4, 4] */
+		/* in [current_chunk_size, 1024, 2, 2] -> out [current_chunk_size, 512, 4, 4] */
 		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a);
 
-		/* in [1, 512, 4, 4] -> out [1, 256, 8, 8] */
+		/* in [current_chunk_size, 512, 4, 4] -> out [current_chunk_size, 256, 8, 8] */
 		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a,batchnorm2_w, batchnorm2_b, batchnorm2_a);
 
-		/* in [1, 256, 8, 8] -> out [1, 128, 16, 16] */
+		/* in [current_chunk_size, 256, 8, 8] -> out [current_chunk_size, 128, 16, 16] */
 		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a,batchnorm3_w, batchnorm3_b, batchnorm3_a);
 
-		/* in [1, 128, 16, 16] -> out [1, 64, 32, 32] */
+		/* in [current_chunk_size, 128, 16, 16] -> out [current_chunk_size, 64, 32, 32] */
 		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a,batchnorm4_w, batchnorm4_b, batchnorm4_a);
 
-		/* in [1, 64, 32, 32] -> out [1, 32, 64, 64] */
+		/* in [current_chunk_size, 64, 32, 32] -> out [current_chunk_size, 32, 64, 64] */
 		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a,batchnorm5_w, batchnorm5_b, batchnorm5_a);
 
-		/* in [1, 32, 64, 64] -> out [1, 32, 128, 128] */
+		/* in [current_chunk_size, 32, 64, 64] -> out [current_chunk_size, 32, 128, 128] */
 		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a,batchnorm6_w, batchnorm6_b, batchnorm6_a);
 		
-		/* in [1, 32, 128, 128] -> out [1, 3, 128, 128] */
+		/* in [current_chunk_size, 32, 128, 128] -> out [current_chunk_size, 3, 128, 128] */
 		Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a);
 
 		/* Copy computation result to the output */
-		memcpy(output + n * 3 * 128 * 128, conv_a->buf, 3 * 128 * 128 * sizeof(float));
+		memcpy(output + n * 3 * 128 * 128, conv_a->buf, current_chunk_size * 3 * 128 * 128 * sizeof(float));
 
-		/* Free the input latent vector z */	
+		/* Free the input latent vector z */
 		delete z;
 		
 	}
