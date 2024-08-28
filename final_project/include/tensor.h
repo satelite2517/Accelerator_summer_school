@@ -15,7 +15,6 @@ struct Tensor {
 
   Tensor(const vector<size_t> &shape_);
   Tensor(const vector<size_t> &shape_, float *buf_);
-  Tensor(const vector<size_t> &shape_, float *buf_, float *gpu_buf_);
   ~Tensor();
 
   size_t num_elem();

@@ -187,92 +187,16 @@ void free_activations() {
 	delete conv_a;
 }
 
-void upload_all_param_to_cuda(){
-	data_upload(mlp1_w);
-	data_upload(mlp1_b);
-	data_upload(mlp2_w);
-	data_upload(mlp2_b);
-	data_upload(convtrans1_w);
-	data_upload(convtrans1_b);
-	data_upload(batchnorm1_w);
-	data_upload(batchnorm1_b);	
-	data_upload(convtrans2_w);
-	data_upload(convtrans2_b);
-	data_upload(batchnorm2_w);
-	data_upload(batchnorm2_b);
-	data_upload(convtrans3_w);
-	data_upload(convtrans3_b);
-	data_upload(batchnorm3_w);
-	data_upload(batchnorm3_b);
-	data_upload(convtrans4_w);
-	data_upload(convtrans4_b);
-	data_upload(batchnorm4_w);
-	data_upload(batchnorm4_b);
-	data_upload(convtrans5_w);
-	data_upload(convtrans5_b);
-	data_upload(batchnorm5_w);
-	data_upload(batchnorm5_b);
-	data_upload(convtrans6_w);
-	data_upload(convtrans6_b);
-	data_upload(batchnorm6_w);
-	data_upload(batchnorm6_b);
-	data_upload(conv_w);
-	data_upload(conv_b);
-}
-
-void upload_all_activation_to_cuda(){
-	data_upload(linear1_a);
-	data_upload(linear2_a);
-	data_upload(reshape_a);
-	data_upload(convtrans1_a);
-	data_upload(batchnorm1_a);
-	data_upload(convtrans2_a);
-	data_upload(batchnorm2_a);
-	data_upload(convtrans3_a);
-	data_upload(batchnorm3_a);
-	data_upload(convtrans4_a);
-	data_upload(batchnorm4_a);
-	data_upload(convtrans5_a);
-	data_upload(batchnorm5_a);
-	data_upload(convtrans6_a);
-	data_upload(batchnorm6_a);
-	data_upload(conv_a);
-}
-
-void cleanup_all_activation_to_cuda(){
-	data_cleanup(linear1_a);
-	data_cleanup(linear2_a);
-	data_cleanup(reshape_a);
-	data_cleanup(convtrans1_a);
-	data_cleanup(batchnorm1_a);
-	data_cleanup(convtrans2_a);
-	data_cleanup(batchnorm2_a);
-	data_cleanup(convtrans3_a);
-	data_cleanup(batchnorm3_a);
-	data_cleanup(convtrans4_a);
-	data_cleanup(batchnorm4_a);	
-	data_cleanup(convtrans5_a);
-	data_cleanup(batchnorm5_a);
-	data_cleanup(convtrans6_a);
-	data_cleanup(batchnorm6_a);
-	data_cleanup(conv_a);
-
-}
-
-
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
-	upload_all_param_to_cuda();
-  
+
 	/* Generate a image for each latent vector in the input */
-	for (size_t n = 0; n < n_img; n++) {
+	for (size_t n = 0; n < n_img; n ++) {
 
 		/* Initialize a input latent vector z [1, LATENT_DIM] */
 		Tensor *z = new Tensor({1, LATENT_DIM});
 		memcpy(z->buf, input + n * LATENT_DIM, LATENT_DIM * sizeof(float));
 		data_upload(z);
-
-		upload_all_activation_to_cuda();
 
 		/* in [1, LATENT_DIM] -> out [1, 16384] */
 		/* in [1, 16384] -> out [1, 4096] */
@@ -308,7 +232,6 @@ void generate_images(float *input, float *output, size_t n_img) {
 
 		/* Free the input latent vector z */	
 		delete z;
-		//cleanup_all_activation_to_cuda();
 		
 	}
 

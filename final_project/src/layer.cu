@@ -23,7 +23,6 @@ __global__ void Linear_kernel(const float *in_, const float *w_, const float *b_
   for (size_t k = 0; k<K; k++){
     out_[i*M+j] += in_[i * K +k] * w_[j * K + k];
   }
-
 }
 
 __global__ void Reshape_kernel(const float *in_, float *out_, const size_t N, const size_t D, const size_t C, const size_t H, const size_t W){
@@ -147,17 +146,9 @@ __global__ void Conv2d_Tanh_fusion_kernel(const float *input_, const float *w_, 
 //Will upload with this part
 void data_upload(Tensor *z) {
     // Calculate the total number of elements in the tensor
-    size_t total_elements = 1;
-    for (size_t i = 0; i < z->ndim; i++) {
-        if (z->shape[i] > 0) {
-            total_elements *= z->shape[i];
-        }
-    }
-
-    // Allocate memory directly to z->gpu_buf
-    CHECK_CUDA(cudaMalloc(&(z->gpu_buf), total_elements * sizeof(float)));
+    size_t N_ = z->num_elem();
     // Copy data from host to device
-    CHECK_CUDA(cudaMemcpy(z->gpu_buf, z->buf, total_elements * sizeof(float), cudaMemcpyHostToDevice));
+    CHECK_CUDA(cudaMemcpyAsync(z->gpu_buf, z->buf, N_ * sizeof(float), cudaMemcpyHostToDevice));
 }
 
 void data_cleanup(Tensor *z) {
