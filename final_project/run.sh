@@ -5,4 +5,4 @@
 #srun --exclusive --gres=gpu:1 nsys profile ./main $@ -v
 
 srun --exclusive --gres=gpu:1 \
-    ./main $@ -v
+    ./main $@ -v -n 32

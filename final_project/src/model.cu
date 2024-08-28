@@ -26,7 +26,7 @@ Parameter *conv_w, *conv_b;
 void alloc_and_set_parameters(float *param, size_t param_size) {
   size_t pos = 0;
 
-  mlp1_w = new Parameter({16384, 128}, param + pos);
+  	mlp1_w = new Parameter({16384, 128}, param + pos);
 	pos += 16384 * 128;
 	mlp1_b = new Parameter({16384}, param + pos);
 	pos += 16384;
@@ -147,6 +147,8 @@ Activation *convtrans5_a, *batchnorm5_a;
 Activation *convtrans6_a, *batchnorm6_a;
 Activation *conv_a;
 
+
+
 void alloc_activations() {
   	linear1_a = new Activation({1, 16384});
 	linear2_a = new Activation({1, 4096});
@@ -167,7 +169,7 @@ void alloc_activations() {
 }
 
 void free_activations() {
-  delete linear1_a;
+  	delete linear1_a;
 	delete linear2_a;
 	delete reshape_a;
 	delete convtrans1_a;
@@ -185,8 +187,42 @@ void free_activations() {
 	delete conv_a;
 }
 
+void upload_all_param(){
+	data_stream(mlp1_b);
+	data_stream(mlp1_w);
+	data_stream(mlp2_b);
+	data_stream(mlp2_w);
+	data_stream(convtrans1_w);
+	data_stream(convtrans1_b);
+	data_stream(batchnorm1_w);
+	data_stream(batchnorm1_b);
+	data_stream(convtrans2_w);
+	data_stream(convtrans2_b);
+	data_stream(batchnorm2_w);
+	data_stream(batchnorm2_b);
+	data_stream(convtrans3_w);
+	data_stream(convtrans3_b);
+	data_stream(batchnorm3_w);
+	data_stream(batchnorm3_b);
+	data_stream(convtrans4_w);
+	data_stream(convtrans4_b);
+	data_stream(batchnorm4_w);
+	data_stream(batchnorm4_b);
+	data_stream(convtrans5_w);
+	data_stream(convtrans5_b);
+	data_stream(batchnorm5_w);
+	data_stream(batchnorm5_b);
+	data_stream(convtrans6_w);
+	data_stream(convtrans6_b);
+	data_stream(batchnorm6_w);
+	data_stream(batchnorm6_b);
+	data_stream(conv_w);
+	data_stream(conv_b);
+}
+
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
+	upload_all_param();
   
 	/* Generate a image for each latent vector in the input */
 	for (size_t n = 0; n < n_img; n++) {
@@ -195,12 +231,11 @@ void generate_images(float *input, float *output, size_t n_img) {
 		Tensor *z = new Tensor({1, LATENT_DIM});
 		memcpy(z->buf, input + n * LATENT_DIM, LATENT_DIM * sizeof(float));
 
-		/* Start computation */
 		/* in [1, LATENT_DIM] -> out [1, 16384] */
-		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a);
-
 		/* in [1, 16384] -> out [1, 4096] */
-		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a);
+		Linear(z, mlp1_w, mlp1_b, linear1_a);
+		Linear(linear1_a, mlp2_w, mlp2_b, linear2_a);
+
 
 		/* in [1, 4096] -> out [1, 1024, 2, 2] */
 		Reshape_cuda(linear2_a, reshape_a);
