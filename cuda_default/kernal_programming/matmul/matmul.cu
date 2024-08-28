@@ -32,8 +32,8 @@ __global__ void matmal(const float *A, const float *B, float *C, const int M, co
   if (thx>=M || thy>=N) return;
 
   C[thx * N + thy]= 0.0f;
-  for (int i = 0; i <K; i++) {
-    C[thx * N + thy] += A[thx * K + i] * B[i * N + thy];
+  for (int k = 0; k <K; k++) {
+    C[thx * N + thy] += A[thx * K + k] * B[k * N + thy];
   }
 
 }
