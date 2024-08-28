@@ -27,3 +27,7 @@ void Conv2d_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
 void BatchNorm2d_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out);
 void Tanh_cuda(Tensor *inout);
 void Reshape_cuda(Tensor *in, Tensor *out);
+
+
+void Conv2d_Tanh_fusion_cuda(Tensor *in, Tensor *w, Tensor *b, Tensor *out);
+void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Conv_bias,  Tensor *Batch_weight, Tensor *Batch_bias, Tensor *out);

@@ -399,42 +399,115 @@ void Tanh_cuda(Tensor *inout) {
   CHECK_CUDA(cudaFree(d_inout));
 }
 
-/*
-* Fusion of ConvTranspose2d, BatchNorm2d, LeakyReLU
- * ConvTranspose2d
- * @param [in1]     in: [N, C, H, W]
- * @param [in2] weight: [C, K, R, S]
- * @param [in3]   bias: [K]
- * @param [out]    out: [N, K, OH, OW]
- *    
- *    OH = (H - 1) * stride - 2 * pad + dilation * (R - 1) + output_pad + 1
- *    OW = (W - 1) * stride - 2 * pad + dilation * (S - 1) + output_pad + 1
- *    In this model, R = S = 3, stride = 2, pad = 1, dilation = 1, output_pad = 1
- *
- * 'N' is the number of input tensors.
- * 'C' is the number of input channels.
- * 'H' is the height of the input tensor.
- * 'W' is the width of the input tensor.
- * 'K' is the number of output channels.
- * 'R' is the height of the filter.
- * 'S' is the width of the filter.
- * 'OH' is the height of the output tensor.
- * 'OW' is the width of the output tensor.
- *
- * BatchNorm2d (track_running_stats=False)
- * @param [in1]     in: [N, C, H, W]
- * @param [in2] weight: [C]
- * @param [in3]   bias: [C]
- * @param [out]    out: [N, C, H, W]  
- * 
- *    out = weight * (in - mean) / sqrt(var + 1e-5) + bias 
- * 
- * 'N' is the number of input tensors.
- * 'C' is the number of channels.
- * 'H' is the height of the input tensor.
- * 'W' is the width of the input tensor.
- * 
- * LeakyReLU
- * @param [in & out] inout: [N]
- * 'N' is the number of elements in the tensor.
- */
+__global__ void Conv2d_Tanh_fusion_kernel(const float *input_, const float *w_, const float *b_, float *output_, const size_t N, const size_t K,
+                              const size_t C, const size_t R, const size_t S, const size_t H, const size_t W, const size_t OH, const size_t OW,
+                              const size_t stride, const size_t pad, const size_t dilation){
+  size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= N * K * OH * OW) return;
+
+  size_t n = idx / (K * OH * OW);
+  size_t oc = (idx / (OH * OW)) % K;
+  size_t oh = (idx / OW) % OH;
+  size_t ow = idx % OW;
+
+
+  float o = b_[oc];
+  for (size_t c = 0; c < C; c++) {
+    for (size_t r = 0; r < R; r++) {
+      for (size_t s = 0; s < S; s++) {
+        size_t h = oh * stride - pad + r * dilation;
+        size_t w = ow * stride - pad + s * dilation;
+        if (h >= H || w >= W) continue;
+        o += input_[n * C * H * W + c * H * W + h * W + w] *
+          w_[oc * C * R * S + c * R * S + r * S + s];
+      }
+    }
+  }
+  output_[n * K * OH * OW + oc * OH * OW + oh * OW + ow] = tanh(o);  
+
+}
+
+void Conv2d_Tanh_fusion_cuda(Tensor *in, Tensor *weight, Tensor *bias, Tensor *out){
+  size_t N = in->shape[0];
+  size_t C = in->shape[1];
+  size_t H = in->shape[2];
+  size_t W = in->shape[3];
+  size_t K = weight->shape[0];
+  size_t R = weight->shape[2];
+  size_t S = weight->shape[3];
+  size_t OH = out->shape[2];
+  size_t OW = out->shape[3];
+
+  const size_t stride = 1;
+  const size_t pad = 1;
+  const size_t dilation = 1;
+
+  float *input_gpu, *weight_gpu, *bias_gpu, *output_gpu;
+  CHECK_CUDA(cudaMalloc(&input_gpu, N*C*H*W*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&weight_gpu, K*C*R*S*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&bias_gpu, K*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&output_gpu, N*K*OH*OW*sizeof(float)));
+
+  CHECK_CUDA(cudaMemcpy(input_gpu, in->buf, N*C*H*W*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(weight_gpu, weight->buf, K*C*R*S*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(bias_gpu, bias->buf, K*sizeof(float), cudaMemcpyHostToDevice));
+
+  Conv2d_Tanh_fusion_kernel<<<(N*K*OH*OW+1024-1)/1024, 1024>>>(input_gpu, weight_gpu, bias_gpu, output_gpu, N, K, C, R, S, H, W, OH, OW, stride, pad, dilation);
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(out->buf, output_gpu, N*K*OH*OW*sizeof(float), cudaMemcpyDeviceToHost));
+
+  CHECK_CUDA(cudaFree(input_gpu));
+  CHECK_CUDA(cudaFree(weight_gpu));
+  CHECK_CUDA(cudaFree(bias_gpu));
+}
+
+void ConvTran_Batch_ReLU_fusion_cuda(Tensor *in, Tensor *Conv_weight, Tensor *Conv_bias,  Tensor *Batch_weight, Tensor *Batch_bias, Tensor *out){
+  size_t Conv_C = in->shape[1];
+  size_t H = in->shape[2];
+  size_t W = in->shape[3];
+  size_t Conv_K = Conv_weight->shape[1];
+  size_t Conv_R = Conv_weight->shape[2];
+  size_t Conv_S = Conv_weight->shape[3];
+  size_t Batch_C = Batch_weight->shape[0];
+  size_t OH = out->shape[2];
+  size_t OW = out->shape[3];
+ 
+  const size_t stride = 2;
+  const size_t pad = 1;
+  const size_t dilation = 1;
+
+  //threads N*K*OH*OW
+  float *in_gpu, *conv_weight_gpu, *conv_bias_gpu, *batch_weight_gpu, *batch_bias_gpu, *conv_out_gpu, *batch_out_gpu;
+  CHECK_CUDA(cudaMalloc(&in_gpu, Conv_C*H*W*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&conv_weight_gpu, Conv_C*Conv_K*Conv_R*Conv_S*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&conv_bias_gpu, Conv_K*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&batch_weight_gpu, Batch_C*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&batch_bias_gpu, Batch_C*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&conv_out_gpu, Conv_K*OH*OW*sizeof(float)));
+  CHECK_CUDA(cudaMalloc(&batch_out_gpu, Conv_K*OH*OW*sizeof(float)));
+
+  CHECK_CUDA(cudaMemcpy(in_gpu, in->buf, Conv_C*H*W*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(conv_weight_gpu, Conv_weight->buf, Conv_C*Conv_K*Conv_R*Conv_S*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(conv_bias_gpu, Conv_bias->buf, Conv_K*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(batch_weight_gpu, Batch_weight->buf, Batch_C*sizeof(float), cudaMemcpyHostToDevice));
+  CHECK_CUDA(cudaMemcpy(batch_bias_gpu, Batch_bias->buf, Batch_C*sizeof(float), cudaMemcpyHostToDevice));
+
+  ConvTranspose2d_kernel<<<(Conv_K*OH*OW+1024-1)/1024, 1024>>>(in_gpu, conv_weight_gpu, conv_bias_gpu, conv_out_gpu, Conv_C, H, W, Conv_K, Conv_R, Conv_S, OH, OW, stride, pad, dilation);
+  BatchNorm2d_kernel<<<(Batch_C*OH*OW+1024-1)/1024, 1024>>>(conv_out_gpu, batch_weight_gpu, batch_bias_gpu, batch_out_gpu, Batch_C, OH, OW);
+  LeakyReLU_kernel<<<(Batch_C*OH*OW+1024-1)/1024, 1024>>>(batch_out_gpu, Batch_C*OH*OW, 0.01);
+
+  CHECK_CUDA(cudaDeviceSynchronize());
+
+  CHECK_CUDA(cudaMemcpy(out->buf, batch_out_gpu, Conv_K*OH*OW*sizeof(float), cudaMemcpyDeviceToHost));
+
+  CHECK_CUDA(cudaFree(in_gpu));
+  CHECK_CUDA(cudaFree(conv_weight_gpu));
+  CHECK_CUDA(cudaFree(conv_bias_gpu));
+  CHECK_CUDA(cudaFree(batch_weight_gpu));
+  CHECK_CUDA(cudaFree(batch_bias_gpu));
+  CHECK_CUDA(cudaFree(conv_out_gpu));
+  CHECK_CUDA(cudaFree(batch_out_gpu));
+
+
+}
