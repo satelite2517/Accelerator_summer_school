@@ -200,57 +200,65 @@ void free_activations() {
 /* [Model Computation: Image Generation] */
 void generate_images(float *input, float *output, size_t n_img) {
 
-	size_t image_chunk = IMAGE_CHUNK;  // IMAGE_CHUNK variable
-	cudaStream_t kernel_stream, data_stream;
-	cudaStreamCreate(&kernel_stream);
-	cudaStreamCreate(&data_stream);
+    size_t image_chunk = IMAGE_CHUNK;  // IMAGE_CHUNK variable
+    cudaStream_t kernel_stream, data_stream;
+    cudaStreamCreate(&kernel_stream);
+    cudaStreamCreate(&data_stream);
 
-	cudaEvent_t kernel_end, memcpy_end;
-	cudaEventCreate(&kernel_end);
-	cudaEventCreate(&memcpy_end);
+    cudaEvent_t kernel_end, memcpy_end;
+    cudaEventCreate(&kernel_end);
+    cudaEventCreate(&memcpy_end);
 
-	/* Generate images for each chunk of latent vectors in the input */
-	for (size_t n = 0; n < n_img; n += image_chunk) {
+    // Allocate pinned memory for output
+    float *pinned_output;
+    cudaMallocHost((void**)&pinned_output, n_img * 3 * 128 * 128 * sizeof(float));
 
-		/* Calculate the number of images in the current chunk */
-		size_t current_chunk_size = (n + image_chunk <= n_img) ? image_chunk : (n_img - n);
+    /* Generate images for each chunk of latent vectors in the input */
+    for (size_t n = 0; n < n_img; n += image_chunk) {
 
-		/* Initialize input latent vectors z [current_chunk_size, LATENT_DIM] */
-		Tensor *z = new Tensor({current_chunk_size, LATENT_DIM});
-		memcpy(z->buf, input + n * LATENT_DIM, current_chunk_size * LATENT_DIM * sizeof(float));
+        /* Calculate the number of images in the current chunk */
+        size_t current_chunk_size = (n + image_chunk <= n_img) ? image_chunk : (n_img - n);
 
-		data_upload(z);
+        /* Initialize input latent vectors z [current_chunk_size, LATENT_DIM] */
+        Tensor *z = new Tensor({current_chunk_size, LATENT_DIM});
+        memcpy(z->buf, input + n * LATENT_DIM, current_chunk_size * LATENT_DIM * sizeof(float));
 
-		Linear_cuda(z, mlp1_w, mlp1_b, linear1_a, kernel_stream);
-		Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a, kernel_stream);
-		Reshape_cuda(linear2_a, reshape_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a, batchnorm2_w, batchnorm2_b, batchnorm2_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a, batchnorm3_w, batchnorm3_b, batchnorm3_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a, batchnorm4_w, batchnorm4_b, batchnorm4_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a, batchnorm5_w, batchnorm5_b, batchnorm5_a, kernel_stream);
-		ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a, batchnorm6_w, batchnorm6_b, batchnorm6_a, kernel_stream);
-		
-		if (n != 0) cudaStreamWaitEvent(kernel_stream, memcpy_end, 0);
+        data_upload(z);
 
-		Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a, kernel_stream);
-		cudaEventRecord(kernel_end, kernel_stream);
+        Linear_cuda(z, mlp1_w, mlp1_b, linear1_a, kernel_stream);
+        Linear_cuda(linear1_a, mlp2_w, mlp2_b, linear2_a, kernel_stream);
+        Reshape_cuda(linear2_a, reshape_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(reshape_a, convtrans1_w, convtrans1_b, convtrans1_a, batchnorm1_w, batchnorm1_b, batchnorm1_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(batchnorm1_a, convtrans2_w, convtrans2_b, convtrans2_a, batchnorm2_w, batchnorm2_b, batchnorm2_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(batchnorm2_a, convtrans3_w, convtrans3_b, convtrans3_a, batchnorm3_w, batchnorm3_b, batchnorm3_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(batchnorm3_a, convtrans4_w, convtrans4_b, convtrans4_a, batchnorm4_w, batchnorm4_b, batchnorm4_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(batchnorm4_a, convtrans5_w, convtrans5_b, convtrans5_a, batchnorm5_w, batchnorm5_b, batchnorm5_a, kernel_stream);
+        ConvTran_Batch_ReLU_fusion_cuda(batchnorm5_a, convtrans6_w, convtrans6_b, convtrans6_a, batchnorm6_w, batchnorm6_b, batchnorm6_a, kernel_stream);
+        
+        if (n != 0) cudaStreamWaitEvent(kernel_stream, memcpy_end, 0);
 
-		cudaStreamWaitEvent(data_stream, kernel_end, 0);
-		CHECK_CUDA(cudaMemcpyAsync(output + n * 3 * 128 * 128, conv_a->gpu_buf, current_chunk_size * 3 * 128 * 128 * sizeof(float), cudaMemcpyDeviceToHost, data_stream));
-		cudaEventRecord(memcpy_end, data_stream);
+        Conv2d_Tanh_fusion_cuda(batchnorm6_a, conv_w, conv_b, conv_a, kernel_stream);
+        cudaEventRecord(kernel_end, kernel_stream);
 
-		/* Free the input latent vector z */
-		delete z;
-	}
+        cudaStreamWaitEvent(data_stream, kernel_end, 0);
+        CHECK_CUDA(cudaMemcpyAsync(pinned_output + n * 3 * 128 * 128, conv_a->gpu_buf, current_chunk_size * 3 * 128 * 128 * sizeof(float), cudaMemcpyDeviceToHost, data_stream));
+        cudaEventRecord(memcpy_end, data_stream);
 
-	// Wait for all operations to complete
-	cudaStreamSynchronize(data_stream);
-	cudaStreamSynchronize(kernel_stream);
+        /* Free the input latent vector z */
+        delete z;
+    }
 
-	// Clean up streams and events
-	cudaEventDestroy(kernel_end);
-	cudaEventDestroy(memcpy_end);
-	cudaStreamDestroy(data_stream);
-	cudaStreamDestroy(kernel_stream);
+    // Wait for all operations to complete
+    cudaStreamSynchronize(data_stream);
+    cudaStreamSynchronize(kernel_stream);
+
+    // Copy from pinned memory to the final output
+    memcpy(output, pinned_output, n_img * 3 * 128 * 128 * sizeof(float));
+
+    // Clean up pinned memory, streams, and events
+    cudaFreeHost(pinned_output);
+    cudaEventDestroy(kernel_end);
+    cudaEventDestroy(memcpy_end);
+    cudaStreamDestroy(data_stream);
+    cudaStreamDestroy(kernel_stream);
 }
