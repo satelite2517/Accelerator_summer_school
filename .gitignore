@@ -2,3 +2,4 @@
 *.ncu-rep
 *.nsys-rep
 final_project/data/*
+*.bin
