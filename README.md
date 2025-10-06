@@ -1,4 +1,4 @@
-#CUDA Optimization Project – Accelerator Programming Summer School (June 2024)
+# CUDA Optimization Project – Accelerator Programming Summer School (June 2024)
 
 This repository contains the CUDA programming project completed during the Accelerator Programming Summer School at Seoul National University in June 2024.
 
